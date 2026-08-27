@@ -1,0 +1,255 @@
+/* Single stylesheet for every theme. Every placeholder below is filled from
+   palettes.json via string.Template, so a literal dollar sign is not allowed
+   anywhere in this file -- not even inside a comment. */
+
+QWidget {
+    background-color: $bg;
+    color: $fg;
+    font-size: 13px;
+}
+
+QMenuBar {
+    background: $menubar_bg;
+    padding: 2px;
+}
+
+QMenuBar::item {
+    background: transparent;
+    padding: 4px 10px;
+    border-radius: 4px;
+}
+
+QMenuBar::item:selected {
+    background: $overlay;
+}
+
+QMenu {
+    background: $menu_bg;
+    border: 1px solid $border;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+QMenu::item {
+    padding: 6px 20px;
+    border-radius: 4px;
+}
+
+QMenu::item:selected {
+    background: $overlay;
+}
+
+QTabWidget::pane {
+    border: none;
+    background: transparent;
+}
+
+#FileTabs::pane {
+    /* Hide the pane content area (white bar issue) */
+    border: none;
+    margin: 0px;
+    padding: 0px;
+}
+
+#FilterSeparator {
+    background-color: $separator;
+    border: none;
+    margin: 4px 6px;
+}
+
+QTabBar::tab {
+    background: $tab_bg;
+    padding: 6px 16px;
+    border-radius: 0px;
+    margin-right: 0px;
+    border: none;
+}
+
+QTabBar::tab:hover {
+    background: $tab_hover;
+}
+
+QTabBar::tab:selected {
+    background: $view_bg;
+}
+
+#FilterTabs QTabBar::tab {
+    background: $tab_bg;
+    padding: 6px 20px;
+    border-radius: 6px;
+    margin-right: 4px;
+}
+
+#FilterTabs QTabBar::tab:hover {
+    background: $tab_hover;
+}
+
+#FilterTabs QTabBar::tab:selected {
+    background: $filter_tab_selected;
+}
+
+#FileTabs QTabBar::tab {
+    background: $file_tab_bg;
+    padding: 6px 16px;
+    border-radius: 0px;
+    margin-right: 0px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    min-width: 100px;
+}
+
+#FileTabs QTabBar::tab:hover {
+    background: $file_tab_hover;
+}
+
+#FileTabs QTabBar::tab:selected {
+    background: $view_bg;
+    border-bottom: 2px solid $view_bg; /* Match log view background to look seamless */
+}
+
+#FileTabs QTabBar::close-button {
+    /* Absolute path injected by build_stylesheet: QSS resolves relative url()
+       against the working directory, which is wrong for a frozen exe. */
+    image: url($close_icon);
+    subcontrol-position: right;
+    padding: 2px;
+    width: 16px;
+    height: 16px;
+    background: $close_btn;
+    border-radius: 3px;
+    margin-right: 4px;
+}
+
+#FileTabs QTabBar::close-button:hover {
+    background: #ff5555;
+}
+
+#ClearButton {
+    background: $control_bg;
+    padding: 4px 12px;
+    border-radius: 6px;
+    border: none;
+    margin-right: 4px;
+    margin-top: 2px;
+}
+
+#ClearButton:hover {
+    background: $control_hover;
+}
+
+#LogView {
+    background-color: $view_bg;
+    border-radius: 0px;
+    border-top-right-radius: 6px;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+    padding: 6px;
+    /* Matches the search-hit highlight so a selected hit stays readable.
+       An ID selector, so it beats any type-selector rule set on the widget. */
+    selection-background-color: $selection;
+    selection-color: $selection_text;
+}
+
+#SearchBar {
+    background: $menu_bg;
+    border-radius: 6px;
+    border: 1px solid $border;
+}
+
+#SearchBar QLineEdit {
+    background: $view_bg;
+    color: $fg;
+    border: 1px solid $border;
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+
+#SearchBar QPushButton {
+    background: $control_bg;
+    color: $fg;
+    border-radius: 4px;
+    padding: 4px 12px;
+    border: none;
+}
+
+#SearchBar QPushButton:hover {
+    background: $control_hover;
+}
+
+#QuackLabel {
+    background-color: $menu_bg;
+    color: $fg;
+    border: 1px solid $border;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+#ScrollDownButton {
+    background: $control_bg;
+    border-radius: 16px;
+    font-size: 14px;
+    font-weight: bold;
+    border: none;
+    color: $fg;
+}
+
+#ScrollDownButton:hover {
+    background: $control_hover;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 8px;
+    margin: 4px 2px 4px 0px;
+}
+
+QScrollBar::handle:vertical {
+    background: $muted;
+    border-radius: 4px;
+    min-height: 30px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: $muted_hover;
+}
+
+QScrollBar:horizontal {
+    background: transparent;
+    height: 8px;
+    margin: 0px 4px 2px 4px;
+}
+
+QScrollBar::handle:horizontal {
+    background: $muted;
+    border-radius: 4px;
+    min-width: 30px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: $muted_hover;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0px;
+    background: none;
+}
+
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0px;
+    background: none;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical,
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background: none;
+}
+
+#LogoLabel {
+    background: transparent;
+}
