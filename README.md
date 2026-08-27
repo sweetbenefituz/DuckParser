@@ -106,4 +106,9 @@ the build bundles actually exists.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[PolyForm Noncommercial 1.0.0](LICENSE).
+
+Free for anything that isn't commercial: personal use, hobby projects, study,
+research, schools, charities and government. Fork it, change it, share it.
+
+Selling it, or using it as part of something you sell, is not permitted.
