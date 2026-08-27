@@ -6,11 +6,11 @@ CRITICAL = ("ERROR", "WARNING")
 
 @dataclass
 class LogEntry:
-    file: str         # имя файла (Client.log)
-    line_no: int      # номер строки
-    text: str         # текст строки
+    file: str         # tab label the line belongs to (Client.log)
+    line_no: int      # 1-based line number in the source file
+    text: str         # the raw line
     level: str        # ALL / ERROR / WARNING
-    hidden: bool = False  # скрыта из вкладки "Все" (пережила очистку)
+    hidden: bool = False  # survived a clear, so it stays out of the ALL view
 
 
 class LogStorage:

@@ -116,16 +116,16 @@ def test_spec_bundles_every_runtime_data_file():
 
 def test_format_tab_path():
     sep = os.sep
-    path = sep.join(["C:", "work", "Duckside", "Builds", "Logs", "duckside.log"])
+    path = sep.join(["C:", "work", "MyGame", "Builds", "Logs", "output.log"])
 
     assert format_tab_path(path, 0) == path
-    assert format_tab_path(path, 3) == sep.join(["...", "Duckside", "Builds", "Logs", "duckside.log"])
+    assert format_tab_path(path, 3) == sep.join(["...", "MyGame", "Builds", "Logs", "output.log"])
     # Asking for more folders than there are shows the whole path, no leading "...".
     assert format_tab_path(path, 9) == path
 
 
 def test_same_named_logs_get_their_own_tabs():
-    """Two builds writing duckside.log must not collapse into one tab."""
+    """Two builds writing output.log must not collapse into one tab."""
     import tempfile
     from PySide6.QtWidgets import QApplication
     from ui.main_window import MainWindow
@@ -137,7 +137,7 @@ def test_same_named_logs_get_their_own_tabs():
         for build in ("build_a", "build_b"):
             folder = os.path.join(root, build)
             os.makedirs(folder)
-            path = os.path.join(folder, "duckside.log")
+            path = os.path.join(folder, "output.log")
             open(path, "w", encoding="utf-8").write("boot\n")
             paths.append(path)
 
@@ -148,13 +148,13 @@ def test_same_named_logs_get_their_own_tabs():
 
             tabs = window.tabs.file_tabs
             assert tabs.count() == 3, "expected the All tab plus one tab per file"
-            assert tabs.tabText(1) == "duckside.log"
-            assert tabs.tabText(2) == "duckside.log (1)"
-            assert tabs.tabToolTip(2).endswith(os.path.join("build_b", "duckside.log"))
+            assert tabs.tabText(1) == "output.log"
+            assert tabs.tabText(2) == "output.log (1)"
+            assert tabs.tabToolTip(2).endswith(os.path.join("build_b", "output.log"))
 
             # Each tab keeps its own log lines.
-            assert len(window.storage.get("duckside.log", "ALL")) == 1
-            assert len(window.storage.get("duckside.log (1)", "ALL")) == 1
+            assert len(window.storage.get("output.log", "ALL")) == 1
+            assert len(window.storage.get("output.log (1)", "ALL")) == 1
 
             # The same path twice just focuses the tab it already has.
             window._open_file_by_path(paths[0])

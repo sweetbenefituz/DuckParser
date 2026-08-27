@@ -259,7 +259,7 @@ class MainWindow(QWidget):
             return
 
         # Logs from different builds share a name, so the second one becomes
-        # "duckside.log (1)". That label is the key storage and workers use.
+        # "output.log (1)". That label is the key storage and workers use.
         label = self._unique_tab_label(os.path.basename(path))
         index = self.tabs.file_tabs.addTab(QWidget(), label)
         self.tabs.file_tabs.setTabToolTip(index, format_tab_path(path, settings.path_depth))
