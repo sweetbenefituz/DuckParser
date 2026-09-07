@@ -18,6 +18,14 @@ DEFAULTS = {
     "last_folder": "",
     # Tab tooltip: 0 shows the whole path, N shows the last N folders.
     "path_depth": 3,
+    # Most recently opened paths, newest first (File -> Recent files).
+    "recent_files": [],
+    # Words that decide a line's level, lowercase. Editable from the menu:
+    # Unreal also says "Fatal" and "Assertion failed", Unity says "Exception".
+    "error_words": ["error", "fail", "fatal", "exception", "assert"],
+    "warning_words": ["warning", "warn"],
+    # Lines kept per file before the oldest are dropped. 0 = unlimited.
+    "max_lines": 200000,
 }
 
 
@@ -47,45 +55,18 @@ class SettingsManager:
         self._settings[key] = value
         self.save()
 
-    @property
-    def language(self) -> str:
-        return self._settings["language"]
 
-    @language.setter
-    def language(self, value: str):
-        self._set("language", value)
+def _bind(key: str):
+    """One read/write property per DEFAULTS key -- beats 80 lines of identical
+    getter/setter pairs, and a new setting is now one line in DEFAULTS."""
+    return property(
+        lambda self: self._settings[key],
+        lambda self, value: self._set(key, value),
+    )
 
-    @property
-    def theme(self) -> str:
-        return self._settings["theme"]
 
-    @theme.setter
-    def theme(self, value: str):
-        self._set("theme", value)
-
-    @property
-    def open_files(self) -> list:
-        return self._settings["open_files"]
-
-    @open_files.setter
-    def open_files(self, value: list):
-        self._set("open_files", value)
-
-    @property
-    def last_folder(self) -> str:
-        return self._settings["last_folder"]
-
-    @last_folder.setter
-    def last_folder(self, value: str):
-        self._set("last_folder", value)
-
-    @property
-    def path_depth(self) -> int:
-        return self._settings["path_depth"]
-
-    @path_depth.setter
-    def path_depth(self, value: int):
-        self._set("path_depth", value)
+for _key in DEFAULTS:
+    setattr(SettingsManager, _key, _bind(_key))
 
 
 # A module is already a singleton -- no __new__ dance needed.

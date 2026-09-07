@@ -9,7 +9,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from models.log_storage import LogStorage, LogEntry
 from parser.log_parser import detect_level
+from settings.settings_manager import settings
 from ui.main_window import load_palette, build_stylesheet, format_tab_path
+
+# Tests drive the real settings singleton; writing through would overwrite the
+# user's own settings.json.
+settings.save = lambda: None
 
 
 def test_detect_level():
@@ -32,14 +37,12 @@ def test_storage_filtering():
     assert len(s.get(None, "ALL")) == 3
     assert len(s.get("a.log", "ALL")) == 2
     assert len(s.get(None, "ERROR")) == 1
-    assert s.find_entry_in_all(err) == 1
 
     # Clearing the ALL view keeps errors/warnings in their own tabs.
     s.clear_non_critical()
     assert s.get(None, "ALL") == []
     assert len(s.get(None, "ERROR")) == 1
     assert len(s.get(None, "WARNING")) == 1
-    assert s.find_entry_in_all(err) is None
 
     s.clear(None, "ERROR")
     assert s.get(None, "ERROR") == []
@@ -47,6 +50,33 @@ def test_storage_filtering():
 
     s.clear()
     assert s.get(None, "WARNING") == []
+
+
+def test_storage_line_limit():
+    """A long-running build must not grow the storage until the app dies."""
+    s = LogStorage(max_lines=100)
+    for i in range(5000):
+        s.add(LogEntry("a.log", i, f"line {i}", "ALL"))
+
+    kept = s.all_entries()
+    assert 100 <= len(kept) <= 100 + 1000, len(kept)
+    assert kept[-1].line_no == 4999, "the newest line must survive"
+
+    unlimited = LogStorage()
+    for i in range(2000):
+        unlimited.add(LogEntry("a.log", i, "x", "ALL"))
+    assert len(unlimited.all_entries()) == 2000
+
+
+def test_custom_keywords():
+    """Unreal says "Fatal", Unity says "Exception" -- both must be colourable
+    without touching the code."""
+    assert detect_level("Fatal error in module") == "ERROR"  # "error" alone catches this one
+    assert detect_level("Assertion tripped") == "ALL", "default words must stay narrow"
+    assert detect_level("Assertion tripped", error_words=["assertion"]) == "ERROR"
+    assert detect_level("Deprecated call", warning_words=["deprecated"]) == "WARNING"
+    # Empty lists mean nothing is coloured, not a crash.
+    assert detect_level("ERROR everywhere", error_words=[], warning_words=[]) == "ALL"
 
 
 def test_storage_clear_scopes():
@@ -162,6 +192,356 @@ def test_same_named_logs_get_their_own_tabs():
             assert tabs.currentIndex() == 1
         finally:
             window.stop_workers()
+
+
+def _window_with_file(root, lines):
+    """A MainWindow with one file open, no tail thread running."""
+    from PySide6.QtWidgets import QApplication
+    from ui.main_window import MainWindow
+
+    QApplication.instance() or QApplication([])
+
+    path = os.path.join(root, "output.log")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("".join(line + "\n" for line in lines))
+
+    window = MainWindow()
+    window._open_file_by_path(path)
+    return window, path
+
+
+def test_load_whole_file_shows_what_is_already_there():
+    """The reported bug: opening a finished build log showed an empty tab,
+    because tailing starts at the end of the file."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as root:
+        window, _ = _window_with_file(root, [
+            "boot ok", "ERROR disk missing", "WARNING low memory", "done",
+        ])
+        try:
+            # Tailing alone sees nothing but the synthetic "log opened" line.
+            assert len(window.storage.get("output.log", "ERROR")) == 0
+
+            window.current_file = "output.log"
+            window._load_full_files()
+
+            assert len(window.storage.get("output.log", "ERROR")) == 1
+            assert len(window.storage.get("output.log", "WARNING")) == 1
+            assert len(window.storage.get("output.log", "ALL")) == 4
+            assert window.storage.get("output.log", "ERROR")[0].line_no == 2
+            # Reloading must leave a live tail behind, not a dead tab.
+            assert window.workers_by_file["output.log"].isRunning()
+        finally:
+            window.stop_workers()
+
+
+def test_text_filter_and_tab_counters():
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as root:
+        window, _ = _window_with_file(root, [
+            "loading Inventory", "ERROR Inventory broken", "ERROR Audio broken",
+        ])
+        try:
+            window.current_file = "output.log"
+            window._load_full_files()
+
+            window.tabs.filter_input.setText("inventory")
+            window._apply_text_filter()
+
+            assert [e.text for e in window._visible_entries("ALL")] == [
+                "loading Inventory", "ERROR Inventory broken",
+            ]
+            assert len(window._visible_entries("ERROR")) == 1
+
+            window._update_status()
+            assert window.tabs.filter_tabs.tabText(1).endswith("(1)"), \
+                window.tabs.filter_tabs.tabText(1)
+            # "All" carries no count: it would just repeat the status bar.
+            assert "(" not in window.tabs.filter_tabs.tabText(0), \
+                window.tabs.filter_tabs.tabText(0)
+
+            window.tabs.filter_input.setText("")
+            window._apply_text_filter()
+            window._update_status()
+            assert window.tabs.filter_tabs.tabText(1).endswith("(2)")
+        finally:
+            window.stop_workers()
+
+
+def test_recent_files_are_deduped_and_capped():
+    from ui.main_window import MainWindow, RECENT_FILES_MAX
+    from PySide6.QtWidgets import QApplication
+
+    QApplication.instance() or QApplication([])
+    saved = list(settings.recent_files)
+    try:
+        settings.recent_files = []
+        window = MainWindow()
+
+        for i in range(RECENT_FILES_MAX + 5):
+            window._push_recent(f"C:\\logs\\file{i}.log")
+        assert len(settings.recent_files) == RECENT_FILES_MAX
+        assert settings.recent_files[0].endswith("file14.log"), "newest goes first"
+
+        # Re-opening a file moves it up instead of adding a duplicate.
+        window._push_recent(settings.recent_files[3])
+        assert len(settings.recent_files) == RECENT_FILES_MAX
+        assert len(set(settings.recent_files)) == RECENT_FILES_MAX
+    finally:
+        settings.recent_files = saved
+
+
+def test_worker_survives_the_log_being_recreated():
+    """A new build run truncates the log. The old code kept waiting past the
+    old end of file and never showed another line."""
+    import tempfile
+    import time
+    from PySide6.QtWidgets import QApplication
+    from parser.log_worker import LogWorker
+
+    app = QApplication.instance() or QApplication([])
+
+    with tempfile.TemporaryDirectory() as root:
+        path = os.path.join(root, "output.log")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("old run line\n")
+
+        seen = []
+        worker = LogWorker(path, "output.log")
+        worker.new_entry.connect(lambda e: seen.append(e.text))
+        worker.start()
+        time.sleep(0.5)  # let the thread reach the tail loop before writing
+
+        def wait_for(text, seconds=10):
+            deadline = time.time() + seconds
+            while time.time() < deadline:
+                app.processEvents()
+                if any(text in s for s in seen):
+                    return True
+                time.sleep(0.05)
+            return False
+
+        try:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write("tailed line\n")
+            assert wait_for("tailed line"), seen
+
+            # A new run starts the log over from scratch.
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("fresh run line\n")
+            assert wait_for("fresh run line"), seen
+        finally:
+            worker.stop()
+            worker.wait(2000)
+
+
+def test_refilled_view_is_fully_painted():
+    """The reported bug: after Clear tab, Load whole file refilled the storage
+    but the viewport kept showing the emptied document until a tab switch.
+
+    The half-painted viewport itself only reproduces on a real desktop, not
+    under the offscreen platform this suite runs on, so what is guarded here is
+    the state around it: content, and a cleared view going back to following
+    the newest line."""
+    import tempfile
+    from PySide6.QtWidgets import QApplication
+    from PySide6.QtGui import QImage, QColor
+
+    QApplication.instance() or QApplication([])
+
+    def ink(view):
+        image = QImage(view.viewport().size(), QImage.Format_ARGB32)
+        image.fill(QColor("#000000"))
+        view.viewport().render(image)
+        background = image.pixelColor(5, 5).rgb()
+        return sum(
+            1
+            for y in range(0, image.height(), 4)
+            for x in range(0, image.width(), 4)
+            if image.pixelColor(x, y).rgb() != background
+        )
+
+    with tempfile.TemporaryDirectory() as root:
+        window, _ = _window_with_file(root, [f"LogTemp: tick {i}" for i in range(300)])
+        try:
+            window.resize(900, 600)
+            window.show()
+            window.current_file = "output.log"
+
+            window._load_full_files()
+            window._clear_current_view()
+            assert window.log_view.row_count() == 0
+            assert ink(window.log_view) == 0, "a cleared view must be blank"
+
+            window._load_full_files()
+            painted = ink(window.log_view)
+
+            window.log_view.repaint()
+            complete = ink(window.log_view)
+
+            assert painted > 0, "nothing was painted after the reload"
+            assert painted >= complete * 0.9, (
+                f"only part of the view was painted: {painted} of {complete}"
+            )
+            # An emptied view starts following the newest line again.
+            bar = window.log_view.verticalScrollBar()
+            assert bar.value() == bar.maximum()
+        finally:
+            window.stop_workers()
+
+
+def test_search_counts_and_steps_through_hits():
+    import tempfile
+    from PySide6.QtWidgets import QApplication
+
+    QApplication.instance() or QApplication([])
+
+    with tempfile.TemporaryDirectory() as root:
+        window, _ = _window_with_file(root, [
+            "boot Alpha", "load ALPHA", "run alpha", "done Beta",
+        ])
+        try:
+            window.current_file = "output.log"
+            window._load_full_files()
+
+            view = window.log_view
+            view._show_search()
+            dialog = view.search_dialog
+
+            dialog.input.setText("alpha")
+            dialog._rescan()
+            assert len(dialog._matches) == 3, "case-insensitive by default"
+
+            dialog.case_box.setChecked(True)
+            dialog._rescan()
+            assert len(dialog._matches) == 1, "Match case must narrow it down"
+            dialog.case_box.setChecked(False)
+            dialog._rescan()
+
+            # Stepping forward walks the hits in order and wraps around.
+            seen = []
+            for _ in range(4):
+                dialog.find()
+                seen.append(view.textCursor().selectionStart())
+            assert seen[:3] == sorted(seen[:3]), seen
+            assert seen[3] == seen[0], "the last hit must wrap back to the first"
+
+            # And backwards steps the other way.
+            dialog.find(backward=True)
+            assert view.textCursor().selectionStart() == seen[2]
+
+            assert "3" in dialog.count_label.text(), dialog.count_label.text()
+
+            # The button and Enter both obey the "Search backwards" box, and
+            # nothing else. clicked() used to hand find() its own checked flag,
+            # which forced forward; Enter fired both that and returnPressed,
+            # so it stepped twice forward -- or, with the box on, cancelled
+            # itself out and looked dead.
+            from PySide6.QtCore import Qt
+            from PySide6.QtTest import QTest
+
+            def step(backward, use_enter):
+                dialog.backward_box.setChecked(backward)
+                before = view.textCursor().selectionStart()
+                if use_enter:
+                    QTest.keyClick(dialog.input, Qt.Key_Return)
+                else:
+                    dialog.find_btn.click()
+                return before, view.textCursor().selectionStart()
+
+            starts = sorted(start for start, _ in dialog._matches)
+            for use_enter in (False, True):
+                how = "Enter" if use_enter else "the button"
+                before, after = step(backward=False, use_enter=use_enter)
+                expected = next((s for s in starts if s > before), starts[0])
+                assert after == expected, f"{how} forward: {before} -> {after}"
+
+                before, after = step(backward=True, use_enter=use_enter)
+                expected = next((s for s in reversed(starts) if s < before), starts[-1])
+                assert after == expected, f"{how} backwards: {before} -> {after}"
+
+            dialog.backward_box.setChecked(False)
+
+            dialog.input.setText("nothing like this")
+            dialog._rescan()
+            assert dialog._matches == []
+            assert dialog.count_label.text() == tr_or_key("search_none")
+
+            dialog.close()
+            assert view.extraSelections() == [], "closing must clear the highlights"
+        finally:
+            window.stop_workers()
+
+
+def test_a_fresh_search_ignores_where_the_caret_was_left():
+    """The reported bug: click somewhere in the middle of the log, then search,
+    and it reported "180 / 300" -- the hunt started at the stray click."""
+    import tempfile
+    from PySide6.QtWidgets import QApplication
+    from PySide6.QtGui import QTextCursor
+
+    QApplication.instance() or QApplication([])
+
+    with tempfile.TemporaryDirectory() as root:
+        window, _ = _window_with_file(root, [f"line {i} target" for i in range(30)])
+        try:
+            window.current_file = "output.log"
+            window._load_full_files()
+
+            view = window.log_view
+            view.setTextCursor(QTextCursor(view.document().findBlockByNumber(20)))
+
+            view._show_search()
+            dialog = view.search_dialog
+            dialog.input.setText("target")
+            dialog._rescan()
+
+            dialog.find()
+            assert view.textCursor().blockNumber() == 0, "a new word starts at the top"
+
+            dialog.find()
+            assert view.textCursor().blockNumber() == 1, "then it steps on from there"
+
+            # Clicking in the log mid-search changes nothing: the search keeps
+            # its own count and carries on from the hit it was standing on.
+            view.setTextCursor(QTextCursor(view.document().findBlockByNumber(25)))
+            dialog.find()
+            assert view.textCursor().blockNumber() == 2, "a click must not move the search"
+
+            # Another word starts over at the top.
+            dialog.input.setText("line 1")
+            dialog._rescan()
+            dialog.find()
+            assert view.textCursor().blockNumber() == 1
+
+            # Backwards, a fresh word starts at the bottom.
+            dialog.input.setText("target")
+            dialog._rescan()
+            dialog.backward_box.setChecked(True)
+            dialog.find()
+            assert view.textCursor().blockNumber() == 29
+            dialog.backward_box.setChecked(False)
+
+            # Reopening the window starts over too.
+            dialog.close()
+            view._show_search()
+            dialog.find()
+            assert view.textCursor().blockNumber() == 0
+
+            # A log that grows mid-search must not drag the caret back up.
+            dialog.find()
+            window._on_new_log_entry(LogEntry("output.log", 31, "line 30 target", "ALL"))
+            dialog.find()
+            assert view.textCursor().blockNumber() == 2, "a new line is not a new search"
+        finally:
+            window.stop_workers()
+
+
+def tr_or_key(key):
+    from localization.localization_manager import tr
+    return tr(key)
 
 
 def _make_rows(n=6):

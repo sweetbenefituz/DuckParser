@@ -1,13 +1,15 @@
-from PySide6.QtWidgets import QTextEdit, QPushButton, QMenu, QLineEdit, QHBoxLayout, QWidget
+from PySide6.QtWidgets import QTextEdit, QPushButton, QMenu
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import (
     QTextCursor, QTextCharFormat, QTextBlockFormat, QColor,
-    QKeySequence, QShortcut, QTextDocument,
+    QKeySequence, QShortcut,
 )
-from localization.localization_manager import get_localization, tr
+from localization.localization_manager import tr
+from ui.search_dialog import SearchDialog
 
-HIGHLIGHT_BG = QColor("#1e90ff")
-HIGHLIGHT_FG = QColor("#ffffff")
+# Same batching reason as LogStorage.TRIM_SLACK: removing one block per
+# appended row would rewrite the document layout on every single line.
+TRIM_SLACK = 1000
 
 
 class LogView(QTextEdit):
@@ -26,16 +28,22 @@ class LogView(QTextEdit):
         self._auto_scroll = True
         self._user_scrolled_up = False
         self._line_entries = []
+        self.max_rows = 0  # 0 = keep everything; set from settings.max_lines
+
+        # Set while the view is being rebuilt or jumped, so our own scroll
+        # handlers keep quiet. Never blockSignals() the scrollbar for this:
+        # QAbstractScrollArea listens to it too, and a blocked valueChanged
+        # leaves the text itself un-scrolled -- a refilled view then paints
+        # blank until something else forces a relayout.
+        self._suppress_scroll_events = False
 
         self.verticalScrollBar().valueChanged.connect(self._on_scroll)
         self.verticalScrollBar().rangeChanged.connect(self._on_range_changed)
 
         self._build_scroll_button()
-        self._build_search_bar()
+        self._build_search()
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
-
-        get_localization().language_changed.connect(self._update_translations)
 
     def _build_scroll_button(self):
         self.scroll_btn = QPushButton("v", self)
@@ -44,52 +52,32 @@ class LogView(QTextEdit):
         self.scroll_btn.hide()
         self.scroll_btn.clicked.connect(self.scroll_to_bottom)
 
-    def _build_search_bar(self):
-        self.search_widget = QWidget(self)
-        self.search_widget.setObjectName("SearchBar")
-
-        layout = QHBoxLayout(self.search_widget)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(6)
-
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText(tr("search_placeholder"))
-        self.search_input.returnPressed.connect(self._search_next)
-        layout.addWidget(self.search_input)
-
-        for label, slot in (("▲", self._search_prev), ("▼", self._search_next), ("✕", self._hide_search)):
-            btn = QPushButton(label)
-            btn.setFixedWidth(32)
-            btn.clicked.connect(slot)
-            layout.addWidget(btn)
-
-        self.search_widget.setFixedHeight(46)
-        self.search_widget.hide()
-
+    def _build_search(self):
+        self.search_dialog = None  # built on the first Ctrl+F
         QShortcut(QKeySequence.Find, self).activated.connect(self._show_search)
-        QShortcut(Qt.Key_Escape, self).activated.connect(self._hide_search)
-
-        self._last_search_pos = -1
-
-    def _update_translations(self):
-        self.search_input.setPlaceholderText(tr("search_placeholder"))
+        QShortcut(Qt.Key_Escape, self).activated.connect(self._close_search)
 
     def _show_search(self):
-        self.search_widget.show()
-        self.search_widget.raise_()
-        self.search_input.setFocus()
-        self.search_input.selectAll()
-        self._position_search_bar()
+        if self.search_dialog is None:
+            self.search_dialog = SearchDialog(self)
+            self.search_dialog.center_on_parent()
 
-    def _hide_search(self):
-        self.search_widget.hide()
-        self._last_search_pos = -1
-        self.setExtraSelections([])
+        self.search_dialog.restart()
+        self.search_dialog.show()
+        self.search_dialog.raise_()
+        self.search_dialog.activateWindow()
+        self.search_dialog.focus_input()
 
-    def _position_search_bar(self):
-        target_width = min(350, self.width() - 40)
-        self.search_widget.setFixedWidth(target_width)
-        self.search_widget.move(self.width() - target_width - 20, 10)
+    def _close_search(self):
+        if self.search_dialog is not None:
+            self.search_dialog.close()
+
+    def select_match(self, cursor: QTextCursor):
+        """Put the caret on a search hit and stop the view running away from it."""
+        self.setTextCursor(cursor)
+        self.ensureCursorVisible()
+        self._center_on_cursor()
+        self._disable_auto_scroll()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -98,46 +86,6 @@ class LogView(QTextEdit):
             self.width() - 42 - scrollbar_width - 8,
             self.height() - 42
         )
-        if self.search_widget.isVisible():
-            self._position_search_bar()
-
-    def _find(self, backward: bool):
-        query = self.search_input.text()
-        if not query:
-            return
-
-        flags = QTextDocument.FindFlag.FindBackward if backward else QTextDocument.FindFlag(0)
-        cursor = self.textCursor()
-        if backward and self._last_search_pos < 0:
-            cursor.movePosition(QTextCursor.End)
-
-        found = self.document().find(query, cursor, flags)
-        if found.isNull():
-            # Wrap around to the far end and try once more.
-            cursor.movePosition(QTextCursor.End if backward else QTextCursor.Start)
-            found = self.document().find(query, cursor, flags)
-
-        if found.isNull():
-            return
-
-        self.setTextCursor(found)
-        fmt = QTextCharFormat()
-        fmt.setBackground(HIGHLIGHT_BG)
-        fmt.setForeground(HIGHLIGHT_FG)
-        selection = QTextEdit.ExtraSelection()
-        selection.format = fmt
-        selection.cursor = found
-        self.setExtraSelections([selection])
-
-        self._center_on_cursor()
-        self._last_search_pos = found.position()
-        self._disable_auto_scroll()
-
-    def _search_prev(self):
-        self._find(backward=True)
-
-    def _search_next(self):
-        self._find(backward=False)
 
     def _disable_auto_scroll(self):
         self._auto_scroll = False
@@ -145,6 +93,9 @@ class LogView(QTextEdit):
         self.scroll_btn.show()
 
     def _on_scroll(self):
+        if self._suppress_scroll_events:
+            return
+
         bar = self.verticalScrollBar()
         at_bottom = bar.value() >= bar.maximum() - 10
 
@@ -153,6 +104,8 @@ class LogView(QTextEdit):
         self.scroll_btn.setVisible(not at_bottom)
 
     def _on_range_changed(self, min_val, max_val):
+        if self._suppress_scroll_events:
+            return
         if self._auto_scroll and not self._user_scrolled_up:
             self.verticalScrollBar().setValue(max_val)
 
@@ -171,7 +124,7 @@ class LogView(QTextEdit):
             return
 
         scrollbar = self.verticalScrollBar()
-        scrollbar.blockSignals(True)
+        self._suppress_scroll_events = True
 
         self.setTextCursor(QTextCursor(block))
         self.ensureCursorVisible()
@@ -180,7 +133,7 @@ class LogView(QTextEdit):
         self._auto_scroll = False
         self._user_scrolled_up = True
 
-        scrollbar.blockSignals(False)
+        self._suppress_scroll_events = False
         self.scroll_btn.show()
 
     def _center_on_cursor(self):
@@ -218,12 +171,28 @@ class LogView(QTextEdit):
         cursor.setCharFormat(QTextCharFormat())
         cursor.insertText(text)
 
+    def _trim_oldest(self):
+        """Drop the head rows so the view cannot grow without bound. Blocks and
+        _line_entries are trimmed together, keeping index == block number."""
+        if not self.max_rows or len(self._line_entries) <= self.max_rows + TRIM_SLACK:
+            return
+
+        excess = len(self._line_entries) - self.max_rows
+        del self._line_entries[:excess]
+
+        cursor = QTextCursor(self.document())
+        cursor.movePosition(QTextCursor.Start)
+        cursor.movePosition(QTextCursor.NextBlock, QTextCursor.KeepAnchor, excess)
+        cursor.removeSelectedText()
+
     def append_row(self, text: str, background: QColor, entry):
         self._line_entries.append(entry)
 
         cursor = QTextCursor(self.document())
         cursor.movePosition(QTextCursor.End)
         self._insert_row(cursor, text, background)
+
+        self._trim_oldest()
 
         if self._auto_scroll and not self._user_scrolled_up:
             bar = self.verticalScrollBar()
@@ -237,7 +206,7 @@ class LogView(QTextEdit):
         old_user_scrolled_up = self._user_scrolled_up
 
         scrollbar = self.verticalScrollBar()
-        scrollbar.blockSignals(True)
+        self._suppress_scroll_events = True
         self.setUpdatesEnabled(False)
 
         self.clear()
@@ -256,10 +225,22 @@ class LogView(QTextEdit):
         else:
             scrollbar.setValue(min(old_scroll_value, scrollbar.maximum()))
 
-        self._auto_scroll = old_auto_scroll
-        self._user_scrolled_up = old_user_scrolled_up
+        if entries:
+            self._auto_scroll = old_auto_scroll
+            self._user_scrolled_up = old_user_scrolled_up
+        else:
+            # An emptied view (Clear tab) starts over: whatever is loaded next
+            # should follow the newest line, like a freshly opened file.
+            self._auto_scroll = True
+            self._user_scrolled_up = False
 
-        scrollbar.blockSignals(False)
+        self._suppress_scroll_events = False
+        self.scroll_btn.setVisible(self._user_scrolled_up)
+
+        # repaint(), not update(): a queued update after a full document swap
+        # only ever redrew part of the viewport, so a refilled view kept showing
+        # the emptied one until a tab switch forced the rest.
+        self.viewport().repaint()
 
     def clear_view(self):
         self.clear()

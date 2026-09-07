@@ -150,30 +150,63 @@ QTabBar::tab:selected {
     selection-color: $selection_text;
 }
 
-#SearchBar {
+QDialog {
     background: $menu_bg;
-    border-radius: 6px;
-    border: 1px solid $border;
 }
 
-#SearchBar QLineEdit {
+QDialog QLineEdit {
     background: $view_bg;
     color: $fg;
     border: 1px solid $border;
     border-radius: 4px;
-    padding: 4px 8px;
+    padding: 5px 8px;
+    selection-background-color: $selection;
+    selection-color: $selection_text;
 }
 
-#SearchBar QPushButton {
+QDialog QLineEdit:focus {
+    border: 1px solid $selection;
+}
+
+QDialog QPushButton {
     background: $control_bg;
     color: $fg;
     border-radius: 4px;
-    padding: 4px 12px;
+    padding: 5px 14px;
     border: none;
+    min-width: 110px;
 }
 
-#SearchBar QPushButton:hover {
+QDialog QPushButton:hover {
     background: $control_hover;
+}
+
+QCheckBox,
+QDialog QLabel {
+    /* QWidget paints them with the window colour, which reads as a sunken bar
+       against the lighter dialog background. */
+    background: transparent;
+}
+
+QCheckBox::indicator {
+    width: 14px;
+    height: 14px;
+    border: 1px solid $border;
+    border-radius: 3px;
+    background: $view_bg;
+}
+
+QCheckBox::indicator:hover {
+    border: 1px solid $selection;
+}
+
+QCheckBox::indicator:checked {
+    background: $selection;
+    border: 1px solid $selection;
+}
+
+#SearchCount {
+    color: $muted_hover;
 }
 
 #QuackLabel {
@@ -252,4 +285,25 @@ QScrollBar::sub-page:horizontal {
 
 #LogoLabel {
     background: transparent;
+}
+
+#FilterInput {
+    background: $view_bg;
+    color: $fg;
+    border: 1px solid $border;
+    border-radius: 6px;
+    padding: 4px 8px;
+    selection-background-color: $selection;
+    selection-color: $selection_text;
+}
+
+#FilterInput:focus {
+    border: 1px solid $selection;
+}
+
+#StatusBar {
+    background: $menubar_bg;
+    color: $muted_hover;
+    border-top: 1px solid $border;
+    padding: 4px 10px;
 }

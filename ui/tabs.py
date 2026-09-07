@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTabWidget,
-    QLabel, QGraphicsOpacityEffect, QFrame, QTabBar, QMenu
+    QLabel, QGraphicsOpacityEffect, QFrame, QTabBar, QMenu, QLineEdit
 )
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, Signal
 from PySide6.QtGui import QPixmap, QPainter, QPainterPath
@@ -97,11 +97,23 @@ class FilterTabs(QWidget):
 
         self.filter_tabs = QTabWidget()
         self.filter_tabs.setObjectName("FilterTabs")
+        # There are exactly three of these and there is room for all three. Without
+        # this the bar shrinks behind scroll arrows the moment the counters make
+        # the labels longer.
+        self.filter_tabs.tabBar().setUsesScrollButtons(False)
         for key in FILTER_LABEL_KEYS:
             self.filter_tabs.addTab(QWidget(), tr(key))
 
         top_layout.addWidget(self.filter_tabs)
         top_layout.addStretch()
+
+        self.filter_input = QLineEdit()
+        self.filter_input.setObjectName("FilterInput")
+        self.filter_input.setPlaceholderText(tr("filter_placeholder"))
+        self.filter_input.setClearButtonEnabled(True)
+        self.filter_input.setFixedWidth(240)
+        top_layout.addWidget(self.filter_input)
+        top_layout.addSpacing(10)
 
         logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ico", "85x85.jpg")
         self.logo_label = RoundLabel(logo_path, 50)
@@ -125,9 +137,22 @@ class FilterTabs(QWidget):
         self.file_tabs.setTabBar(self.file_tab_bar)
         self.file_tabs.addTab(QWidget(), tr("tab_all"))
 
+        # Both buttons live in the tab bar corner, side by side.
+        corner = QWidget()
+        corner_layout = QHBoxLayout(corner)
+        corner_layout.setContentsMargins(0, 0, 0, 0)
+        corner_layout.setSpacing(4)
+
+        self.load_full_btn = QPushButton(tr("btn_load_full"))
+        self.load_full_btn.setObjectName("ClearButton")
+        self.load_full_btn.setToolTip(tr("btn_load_full_hint"))
+        corner_layout.addWidget(self.load_full_btn)
+
         self.clear_btn = QPushButton(tr("btn_clear_tab"))
         self.clear_btn.setObjectName("ClearButton")
-        self.file_tabs.setCornerWidget(self.clear_btn, Qt.TopRightCorner)
+        corner_layout.addWidget(self.clear_btn)
+
+        self.file_tabs.setCornerWidget(corner, Qt.TopRightCorner)
 
         main_layout.addWidget(self.file_tabs)
 
@@ -136,6 +161,9 @@ class FilterTabs(QWidget):
             self.filter_tabs.setTabText(i, tr(key))
         self.file_tabs.setTabText(0, tr("tab_all"))
         self.clear_btn.setText(tr("btn_clear_tab"))
+        self.load_full_btn.setText(tr("btn_load_full"))
+        self.load_full_btn.setToolTip(tr("btn_load_full_hint"))
+        self.filter_input.setPlaceholderText(tr("filter_placeholder"))
 
 
 class FileTabBar(QTabBar):

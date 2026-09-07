@@ -17,7 +17,14 @@ a build script, a crash dump someone pasted into a `.txt`.
 
 **Live tailing.** The file stays open. New lines appear as they are written, so
 you can leave DuckParser next to a running build or a running game and watch the
-log fill up in real time.
+log fill up in real time. When a new run recreates the log from scratch,
+DuckParser notices and starts following the new file instead of waiting forever
+at the end of the old one.
+
+**Load whole file.** Tailing shows what is written from now on, which leaves a
+finished log looking empty. The `Load whole file` button next to `Clear tab`
+reads the file from its first line, then keeps tailing. On the `All` tab it
+reloads every open file at once.
 
 **Errors and warnings, separated.** Three tabs across the top — `All`, `Errors`,
 `Warnings`. A line is a warning if it contains "warning", an error if it
@@ -35,8 +42,26 @@ it to see where the file actually lives; how much of the path the tooltip shows
 is up to you (`Settings → Tab path`: the full path, or just the last 2–5
 folders).
 
-**Search.** `Ctrl+F` opens a search box over the log. Enter or the arrows jump
-between matches, and it wraps around at the ends.
+**Search.** `Ctrl+F` opens a search window of its own, centred over the log. It
+says how many hits there are and which one you are on (`Found: 3 / 47`),
+highlights all of them at once, and takes `Match case` and `Search backwards`.
+Enter steps to the next hit and wraps around at the ends; `Esc` closes it.
+
+**Filter by text.** The box in the top right hides every line that does not
+contain what you type — across all three tabs at once, and the counters follow
+it. Empty it to get everything back.
+
+**Counters on the tabs.** `Errors (17)`, `Warnings (43)`: whether a build is
+clean is visible without switching tabs.
+
+**Your own keywords.** A line's level is decided by the words it contains, and
+the words are yours: `Settings → Error words` / `Warning words` take a
+comma-separated list, so Unreal's `Fatal` and `Assertion`, or Unity's
+`Exception`, get coloured like everything else. Changing them re-colours the
+lines already on screen.
+
+**Status line.** The bottom of the window shows the full path of the current
+file, whether it is still being tailed, and how many lines are on screen.
 
 **Jump back to context.** Right-click any error or warning in a filtered tab and
 choose *Open in "All" log* — it switches to the `All` tab and scrolls to that
@@ -50,11 +75,19 @@ wipes everything.
 you scroll up, then it stops and stays where you put it. A button in the corner
 takes you back to the bottom.
 
+**Drag and drop.** Drop a log from Explorer anywhere on the window to open it.
+`File → Recent files` keeps the last ten, newest first.
+
+**A ceiling on memory.** A multi-gigabyte log would otherwise fill the RAM until
+the program dies, so only the newest lines are kept — 200 000 per file by
+default, changeable in `Settings → Line limit`, up to no limit at all.
+
 **Themes and languages.** Dark and light themes; English, Russian and Ukrainian
 interface. `Always on top` pins the window over the game or editor.
 
-**It remembers.** Language, theme, and the files you had open are restored on
-the next launch.
+**It remembers.** Language, theme, the folder you last opened a log from, the
+recent files list, and the files you had open are all restored on the next
+launch.
 
 ## Getting it
 
@@ -89,8 +122,9 @@ pytest
 ```
 
 The suite is deliberately small and checks the things that broke before:
-level detection, the theme files, the settings location, and that every file
-the build bundles actually exists.
+level detection, the theme files, the settings location, that every file the
+build bundles actually exists, that loading a whole file finds the lines already
+in it, and that tailing survives a new run recreating the log.
 
 ## Layout
 
